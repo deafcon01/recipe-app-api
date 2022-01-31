@@ -1,66 +1,77 @@
-from django.contrib.auth import get_user_model
-from django.urls import reverse
+from unittest.mock import patch
+
 from django.test import TestCase
+from django.contrib.auth import get_user_model
 
-from rest_framework import status
-from rest_framework.test import APIClient
-
-from core.models import Ingredient
-
-from recipe.serializers import IngredientSerializer
+from core import models
 
 
-INGREDIENTS_URL = reverse('recipe:ingredient-list')
+def sample_user(email='test@londonappdev.com', password='testpass'):
+    """Create a sample user"""
+    return get_user_model().objects.create_user(email, password)
 
 
-class PublicIngredientsApiTests(TestCase):
-    """Test the publically available ingredients API"""
+class ModelTests(TestCase):
 
-    def setUp(self):
-        self.client = APIClient()
+    def test_create_user_with_email_successful(self):
+        """Test creating a new user with an email is successful"""
+        email = 'test@londonappdev.com'
+        password = 'Testpass123'
+        user = get_user_model().objects.create_user(
+            email=email,
+            password=password
+        )
 
-    def test_login_required(self):
-        """Test that login is required to access this endpoint"""
-        res = self.client.get(INGREDIENTS_URL)
+        self.assertEqual(user.email, email)
+        self.assertTrue(user.check_password(password))
 
-        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+    def test_new_user_email_normalized(self):
+        """Test the email for a new user is normalized"""
+        email = 'test@LONDONAPPDEV.COM'
+        user = get_user_model().objects.create_user(email, 'test123')
 
+        self.assertEqual(user.email, email.lower())
 
-class PrivateIngredientsAPITests(TestCase):
-    """Test ingredients can be retrieved by authorized user"""
+    def test_new_user_invalid_email(self):
+        """Test creating user with no email raises error"""
+        with self.assertRaises(ValueError):
+            get_user_model().objects.create_user(None, 'test123')
 
-    def setUp(self):
-        self.client = APIClient()
-        self.user = get_user_model().objects.create_user(
+    def test_create_new_superuser(self):
+        """Test creating a new superuser"""
+        user = get_user_model().objects.create_superuser(
             'test@londonappdev.com',
-            'testpass'
+            'test123'
         )
-        self.client.force_authenticate(self.user)
 
-    def test_retrieve_ingredient_list(self):
-        """Test retrieving a list of ingredients"""
-        Ingredient.objects.create(user=self.user, name='kale')
-        Ingredient.objects.create(user=self.user, name='Salt')
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_staff)
 
-        res = self.client.get(INGREDIENTS_URL)
-
-        ingredients = Ingredient.objects.all().order_by('-name')
-        serializer = IngredientSerializer(ingredients, many=True)
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data, serializer.data)
-
-    def test_ingredients_limited_to_user(self):
-        """Test that only ingredients for authenticated user are returned"""
-        user2 = get_user_model().objects.create_user(
-            'other@londonappdev.com',
-            'testpass'
+    def test_tag_str(self):
+        """Test the tag string representation"""
+        tag = models.Tag.objects.create(
+            user=sample_user(),
+            name='Vegan'
         )
-        Ingredient.objects.create(user=user2, name='Vinegar')
 
-        ingredient = Ingredient.objects.create(user=self.user, name='Tumeric')
+        self.assertEqual(str(tag), tag.name)
 
-        res = self.client.get(INGREDIENTS_URL)
+    def test_ingredient_str(self):
+        """Test the ingredient string respresentation"""
+        ingredient = models.Ingredient.objects.create(
+            user=sample_user(),
+            name='Cucumber'
+        )
 
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res.data), 1)
-        self.assertEqual(res.data[0]['name'], ingredient.name)
+        self.assertEqual(str(ingredient), ingredient.name)
+
+    def test_recipe_str(self):
+        """Test the recipe string representation"""
+        recipe = models.Recipe.objects.create(
+            user=sample_user(),
+            title='Steak and mushroom sauce',
+            time_minutes=5,
+            price=5.00
+        )
+
+        self.assertEqual(str(recipe), recipe.title)
